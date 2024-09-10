@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+
+"""William Jenkins
+Scripps Institution of Oceanography, UC San Diego
+wjenkins [at] ucsd [dot] edu
+May 2021
+
+This script provides a command-line interface entry point for the RIS
+clustering workflow, and is the primary script that performs 
+pre-training and training of the deep clustering models.
+"""
+
+import argparse
+from datetime import datetime
+import os
+import sys
+import time
+
+import matplotlib
+import multiprocessing as mp
+
+from Cluster import production
+from Cluster.utils import Configuration, notify
+
+def main(init_path=None, cuda_device=None):
+    """This command line function is the primary script that performs
+    pre-training and training of the deep embedded clustering models.
+
+    Parameters
+    ----------
+    init_file : str
+        Path to the configuration file
+
+    cuda_device : str
+        CUDA device number (optional)
+    """
+
+    matplotlib.use('Agg')
+
+    if os.isatty(sys.stdin.fileno()):
+        parser = argparse.ArgumentParser(
+            description="Script pretrains or trains DEC model."
+        )
+        parser.add_argument('init_path', help="Enter path to init file.")
+        parser.add_argument('--cuda_device', help="Select CUDA device.")
+        args = parser.parse_args()
+        init_path = args.init_path
+        cuda_device = args.cuda_device
+    else:
+        if init_path is None:
+            ValueError("init_path must be specified.")
+
+    config = Configuration(init_path)
+    config.load_config()
+
+    if cuda_device is not None:
+        config.set_device(cuda_device)
+    else:
+        config.set_device()
+
+    config.init_exp_env()
+
+    if config.tb:
+        config.start_tensorboard()
+        time.sleep(5)
+
+    config.save_exp_config()
+
+    tic = datetime.now()
+    # ==== Checks ======================================================
+    if not os.path.exists(config.fname_dataset):
+        raise ValueError(f'Dataset file not found: {config.fname_dataset}')
+    if not os.path.exists(config.indexpath):
+        raise ValueError(f'Index file not found: {config.indexpath}')
+    if config.model == 'DEC' and not os.path.exists(config.saved_weights):
+        raise ValueError(f'Saved weights file not found: {config.saved_weights}')
+    # ==== ML Production ===============================================
+    print('='*100)
+    print(f'Executing {config.verb} mode for {config.model}')
+    if config.mode == "train":
+        production.train(config)
+    elif config.mode == "predict":
+        production.predict(config)
+    elif config.mode == "fit":
+        production.gmm_fit(config)
+    print('-'*100)
+    toc = datetime.now()
+    msgcontent = f'{config.model} {config.verb} completed at {toc}.' + \
+                 f'\nTime Elapsed = {toc-tic}.'
+    print(msgcontent)
+    if config.send_message:
+        msgsubj = f'{config.model} {config.verb} completed.'
+        notify(msgsubj, msgcontent)
+    print('='*100)
+
+
+if __name__ == '__main__':
+    mp.set_start_method('forkserver', force=True)
+    main()
