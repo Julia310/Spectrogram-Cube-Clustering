@@ -34,7 +34,7 @@ To set up the environment for running the code, follow these steps:
      ```
    - For a **CPU-based environment**:  
      ```bash
-     conda activate RISCluster_CPU
+     conda env create -f RISCluster_CPU.yml
      ```
 ***
 
